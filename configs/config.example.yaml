@@ -1,0 +1,22 @@
+http:
+  addr: ':8080'
+  read_timeout: '15s'
+  write_timeout: '60s'
+
+openai:
+  # Any OpenAI-compatible endpoint. Examples:
+  # - Ollama:   http://localhost:11434/v1
+  # - LM Studio http://localhost:1234/v1
+  # - Jan       http://localhost:1337/v1
+  # - LocalAI   http://localhost:8080/v1
+  base_url: 'http://localhost:11434/v1'
+  api_key: ''
+  model: 'qwen2.5:7b'
+
+pokemontcg:
+  base_url: 'https://api.pokemontcg.io/v2'
+  api_key: ''
+  fallback_requests_per_min: 15
+
+mcp:
+  enable: false
