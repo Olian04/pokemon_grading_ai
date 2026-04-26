@@ -14,12 +14,17 @@ import (
 )
 
 func main() {
-	initLogger()
+	cfg, err := app.LoadConfig()
+	if err != nil {
+		slog.Error("config_load_failed", "error", err)
+		os.Exit(1)
+	}
+	initLogger(cfg.LogLevel)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	server, cleanup, err := app.Bootstrap(ctx)
+	server, cleanup, err := app.BootstrapWithConfig(ctx, cfg)
 	if err != nil {
 		slog.Error("bootstrap_failed", "error", err)
 		os.Exit(1)
@@ -57,24 +62,11 @@ func main() {
 	}
 }
 
-func initLogger() {
-	level := new(slog.LevelVar)
-	level.Set(parseLevel(os.Getenv("LOG_LEVEL")))
+func initLogger(level slog.Level) {
+	levelVar := new(slog.LevelVar)
+	levelVar.Set(level)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
+		Level: levelVar,
 	}))
 	slog.SetDefault(logger)
-}
-
-func parseLevel(raw string) slog.Level {
-	switch raw {
-	case "debug", "DEBUG":
-		return slog.LevelDebug
-	case "warn", "WARN", "warning", "WARNING":
-		return slog.LevelWarn
-	case "error", "ERROR":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
 }

@@ -49,10 +49,6 @@ type gradeInput struct {
 }
 
 func (h *Handler) Grade(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	var in gradeInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -73,10 +69,6 @@ func (h *Handler) Grade(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CardSearch(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
 		http.Error(w, "missing q query parameter", http.StatusBadRequest)
@@ -91,11 +83,7 @@ func (h *Handler) CardSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CardPricing(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	id := strings.TrimPrefix(r.URL.Path, "/v1/cards/pricing/")
+	id := strings.TrimSpace(r.PathValue("id"))
 	if id == "" {
 		http.Error(w, "missing card id", http.StatusBadRequest)
 		return

@@ -1,0 +1,47 @@
+# Binaries / build artifacts
+bin/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go tooling artifacts
+coverage.out
+coverage.*
+*.coverprofile
+*.prof
+*.pprof
+
+# Local runtime files
+*.log
+*.pid
+tmp/
+.tmp/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local config overrides (examples are committed)
+pokemon-ai.yaml
+.pokemon-ai.yaml
+.pokemon-ai/
+!configs/config.example.yaml
+!deploy/config.compose.yaml
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cursor
+.cursor/

@@ -28,23 +28,44 @@ go run ./cmd/api
 
 Server defaults to `:8080`.
 
-## Environment Variables
+## Configuration
 
-- `HTTP_ADDR` (default `:8080`)
-- `HTTP_READ_TIMEOUT` (default `15s`)
-- `HTTP_WRITE_TIMEOUT` (default `60s`)
-- `LOG_LEVEL` (default `info`, supported: `debug|info|warn|error`)
-- `HTTP_ACCESS_LOG_ENABLED` (default `true`)
-- `HTTP_SLOW_REQUEST_THRESHOLD` (default `500ms`)
-- `OPENAI_BASE_URL` (default `http://localhost:11434/v1`)
-- `OPENAI_API_KEY` (optional)
-- `OPENAI_MODEL` (default `qwen2.5:7b`)
-- `POKEMON_TCG_BASE_URL` (default `https://api.pokemontcg.io/v2`)
-- `POKEMON_TCG_API_KEY` (optional)
-- `POKEMON_TCG_FALLBACK_RPM` (default `15`)
-- `ENABLE_MCP` (default `false`)
+Configuration is loaded from YAML.
 
-All operational logs are emitted via `slog` in JSON format. HTTP request logging is tunable with the logging env vars above.
+- Optional env var: `APP_CONFIG_FILE`
+  - If set, specifies the explicit config file path to load (overrides search).
+  - If omitted, the app searches for a config file (in this order):
+    - current working directory: `pokemon-ai.yaml`, `.pokemon-ai.yaml`, `.pokemon-ai/config.yaml`
+    - user home directory: `pokemon-ai.yaml`, `.pokemon-ai.yaml`, `.pokemon-ai/config.yaml`
+    - executable directory: `pokemon-ai.yaml`, `.pokemon-ai.yaml`, `.pokemon-ai/config.yaml`
+  - First readable config file found is used, else start fails with error.
+
+Copy `configs/config.example.yaml` to one of those locations and edit values.
+
+All operational logs are emitted via `slog` in JSON format. HTTP logging and level are configured in YAML under `logging`.
+Prometheus metrics are available at `GET /metrics`.
+
+## AI Gating Rules
+
+AI usage is controlled by three expression strings in YAML:
+
+- `ai.price_rule` (evaluated first)
+- `ai.confidence_rule`
+- `ai.score_rule`
+
+Supported operators: `<`, `<=`, `>`, `>=`.
+Rules are written without variable names (operator + value only).
+
+Implicit metrics:
+
+- `price_rule` uses `market_value_usd`
+- `confidence_rule` uses `confidence`
+- `score_rule` uses `overall_proxy`
+
+Evaluation order:
+
+1. If `price_rule` is false, AI is skipped and response includes `skipped_reason=low_value`.
+2. If `price_rule` is true, AI is used only when `confidence_rule AND score_rule` are both true.
 
 ## API Examples
 
@@ -76,9 +97,15 @@ curl "http://localhost:8080/v1/cards/pricing/base1-4"
 
 ## Optional Open WebUI Integration
 
-Use `deploy/docker-compose.yml` for a local stack (`api` + `ollama` + `open-webui`).
+Use `deploy/docker-compose.yml` for a fully provisioned local stack (`api` + `ollama` + `open-webui`).
 
-In Open WebUI, add a custom tool that calls:
+This compose setup now:
+
+- mounts a YAML config file into API (`deploy/config.compose.yaml`)
+- bootstraps Ollama and pre-pulls the configured model
+- starts Open WebUI after API health checks pass
+
+In Open WebUI, add a custom tool that calls the grading endpoint:
 
 - URL: `http://host.docker.internal:8080/v1/grade` (from containerized Open WebUI on Windows)
 - Method: `POST`
@@ -86,7 +113,7 @@ In Open WebUI, add a custom tool that calls:
 
 ## Optional Self-Hosted OpenAI-Compatible Backends
 
-Set `OPENAI_BASE_URL` and `OPENAI_MODEL` to one of:
+Set `openai.base_url` and `openai.model` in YAML to one of:
 
 - Ollama (`http://localhost:11434/v1`)
 - LM Studio local server (`http://localhost:1234/v1`)

@@ -7,6 +7,8 @@ import (
 	"slices"
 
 	"pokemon_ai/internal/domain/imageproc"
+	"pokemon_ai/internal/integrations/market"
+	"pokemon_ai/internal/integrations/pokemontcg"
 )
 
 type AIAdapter interface {
@@ -20,22 +22,45 @@ type ImageAnalyzer interface {
 }
 
 type Dependencies struct {
-	AI       AIAdapter
-	TCG      any
-	Events   EventPublisher
-	Analyzer ImageAnalyzer
+	AI        AIAdapter
+	TCG       TCGAdapter
+	Market    MarketAdapter
+	Events    EventPublisher
+	Analyzer  ImageAnalyzer
+	PriceRule string
+	ConfRule  string
+	ScoreRule string
 }
 
 type Service struct {
-	ai       AIAdapter
-	analyzer ImageAnalyzer
+	ai        AIAdapter
+	tcg       TCGAdapter
+	market    MarketAdapter
+	analyzer  ImageAnalyzer
+	priceRule string
+	confRule  string
+	scoreRule string
 }
 
 func NewService(deps Dependencies) *Service {
 	return &Service{
-		ai:       deps.AI,
-		analyzer: deps.Analyzer,
+		ai:        deps.AI,
+		tcg:       deps.TCG,
+		market:    deps.Market,
+		analyzer:  deps.Analyzer,
+		priceRule: deps.PriceRule,
+		confRule:  deps.ConfRule,
+		scoreRule: deps.ScoreRule,
 	}
+}
+
+type TCGAdapter interface {
+	SearchCards(ctx context.Context, query string) ([]pokemontcg.Card, error)
+	GetCardPricing(ctx context.Context, id string) (pokemontcg.PriceSummary, error)
+}
+
+type MarketAdapter interface {
+	BuildMarketResult(ctx context.Context, us pokemontcg.PriceSummary) market.Result
 }
 
 type GradeRequest struct {
@@ -53,6 +78,9 @@ type GradeResponse struct {
 	Confidence        float64            `json:"confidence"`
 	Evidence          []string           `json:"evidence"`
 	DeterministicOnly bool               `json:"deterministic_only"`
+	AIUsed            bool               `json:"ai_used"`
+	SkippedReason     string             `json:"skipped_reason,omitempty"`
+	Market            market.Result      `json:"market"`
 	Card              map[string]string  `json:"card"`
 }
 
@@ -86,20 +114,40 @@ func (s *Service) GradeCard(ctx context.Context, req GradeRequest) (GradeRespons
 	}
 	overall := weightedOverallScore(subscores)
 	deterministicOnly := true
+	aiUsed := false
+	skippedReason := ""
 	confidence := analysis.Confidence
 	evidence := slices.Clone(analysis.Evidence)
+	marketResult, marketValueUSD := s.resolveMarket(ctx, req)
 
-	if analysis.Confidence < 0.75 && s.ai != nil {
-		aiResp, err := s.ai.AssessSurface(ctx, AIAssistRequest{
-			FrontImagePath: req.FrontImagePath,
-			BackImagePath:  req.BackImagePath,
-		})
-		if err == nil {
-			subscores["surface"] = aiResp.SurfaceScore
-			overall = weightedOverallScore(subscores)
-			deterministicOnly = false
-			confidence = math.Round(((analysis.Confidence+aiResp.Confidence)/2)*100) / 100
-			evidence = append(evidence, aiResp.Evidence...)
+	eligibleByPrice, err := evaluateExpression(defaultRule(s.priceRule, ">= 20"), marketValueUSD)
+	if err != nil {
+		return GradeResponse{}, err
+	}
+	if !eligibleByPrice {
+		skippedReason = "low_value"
+	} else if s.ai != nil {
+		confGate, err := evaluateExpression(defaultRule(s.confRule, "< 0.75"), analysis.Confidence)
+		if err != nil {
+			return GradeResponse{}, err
+		}
+		scoreGate, err := evaluateExpression(defaultRule(s.scoreRule, ">= 7.5"), overall)
+		if err != nil {
+			return GradeResponse{}, err
+		}
+		if confGate && scoreGate {
+			aiResp, err := s.ai.AssessSurface(ctx, AIAssistRequest{
+				FrontImagePath: req.FrontImagePath,
+				BackImagePath:  req.BackImagePath,
+			})
+			if err == nil {
+				subscores["surface"] = aiResp.SurfaceScore
+				overall = weightedOverallScore(subscores)
+				deterministicOnly = false
+				aiUsed = true
+				confidence = math.Round(((analysis.Confidence+aiResp.Confidence)/2)*100) / 100
+				evidence = append(evidence, aiResp.Evidence...)
+			}
 		}
 	}
 
@@ -110,9 +158,48 @@ func (s *Service) GradeCard(ctx context.Context, req GradeRequest) (GradeRespons
 		Confidence:        confidence,
 		Evidence:          evidence,
 		DeterministicOnly: deterministicOnly,
+		AIUsed:            aiUsed,
+		SkippedReason:     skippedReason,
+		Market:            marketResult,
 		Card: map[string]string{
 			"name": req.CardNameHint,
 			"set":  req.SetCodeHint,
 		},
 	}, nil
+}
+
+func (s *Service) resolveMarket(ctx context.Context, req GradeRequest) (market.Result, float64) {
+	if s.tcg == nil || s.market == nil || req.CardNameHint == "" {
+		return market.Result{
+			EU: market.RegionStats{UnavailableReason: "cardmarket unavailable: missing pricing context"},
+			US: market.RegionStats{UnavailableReason: "us pricing unavailable: missing card hint"},
+		}, 0
+	}
+	cards, err := s.tcg.SearchCards(ctx, req.CardNameHint)
+	if err != nil || len(cards) == 0 {
+		return market.Result{
+			EU: market.RegionStats{UnavailableReason: "cardmarket unavailable: missing pricing context"},
+			US: market.RegionStats{UnavailableReason: "us pricing unavailable: search failed"},
+		}, 0
+	}
+	price, err := s.tcg.GetCardPricing(ctx, cards[0].ID)
+	if err != nil {
+		return market.Result{
+			EU: market.RegionStats{UnavailableReason: "cardmarket unavailable: missing pricing context"},
+			US: market.RegionStats{UnavailableReason: "us pricing unavailable: pricing lookup failed"},
+		}, 0
+	}
+	result := s.market.BuildMarketResult(ctx, price)
+	var usd float64
+	if result.US.CurrentMarketValue != nil {
+		usd = *result.US.CurrentMarketValue
+	}
+	return result, usd
+}
+
+func defaultRule(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
