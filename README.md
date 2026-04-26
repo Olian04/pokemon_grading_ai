@@ -33,6 +33,9 @@ Server defaults to `:8080`.
 - `HTTP_ADDR` (default `:8080`)
 - `HTTP_READ_TIMEOUT` (default `15s`)
 - `HTTP_WRITE_TIMEOUT` (default `60s`)
+- `LOG_LEVEL` (default `info`, supported: `debug|info|warn|error`)
+- `HTTP_ACCESS_LOG_ENABLED` (default `true`)
+- `HTTP_SLOW_REQUEST_THRESHOLD` (default `500ms`)
 - `OPENAI_BASE_URL` (default `http://localhost:11434/v1`)
 - `OPENAI_API_KEY` (optional)
 - `OPENAI_MODEL` (default `qwen2.5:7b`)
@@ -40,6 +43,8 @@ Server defaults to `:8080`.
 - `POKEMON_TCG_API_KEY` (optional)
 - `POKEMON_TCG_FALLBACK_RPM` (default `15`)
 - `ENABLE_MCP` (default `false`)
+
+All operational logs are emitted via `slog` in JSON format. HTTP request logging is tunable with the logging env vars above.
 
 ## API Examples
 
@@ -50,7 +55,7 @@ curl -X POST http://localhost:8080/v1/grade \
   -H "Content-Type: application/json" \
   -d '{
     "front_image_path":"assets/pokemon_card_front.png",
-    "back_image_path":"",
+    "back_image_path":"assets/pokemon_card_back.png",
     "card_name_hint":"Pikachu",
     "set_code_hint":"base1",
     "card_number_hint":"58"
@@ -71,7 +76,7 @@ curl "http://localhost:8080/v1/cards/pricing/base1-4"
 
 ## Optional Open WebUI Integration
 
-Use `deploy/docker-compose.optional.yml` for a local stack (`api` + `ollama` + `open-webui`).
+Use `deploy/docker-compose.yml` for a local stack (`api` + `ollama` + `open-webui`).
 
 In Open WebUI, add a custom tool that calls:
 
@@ -107,5 +112,3 @@ MCP JSON-RPC methods currently supported:
 ```bash
 go test ./...
 ```
-
-# Pokemon Grading AI

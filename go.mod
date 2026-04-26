@@ -1,6 +1,6 @@
 module pokemon_ai
 
-go 1.24
+go 1.26
 
 require github.com/ThreeDotsLabs/watermill v1.4.4
 

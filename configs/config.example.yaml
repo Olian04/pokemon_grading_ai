@@ -3,6 +3,11 @@ http:
   read_timeout: '15s'
   write_timeout: '60s'
 
+logging:
+  level: 'info'
+  http_access_log_enabled: true
+  http_slow_request_threshold: '500ms'
+
 openai:
   # Any OpenAI-compatible endpoint. Examples:
   # - Ollama:   http://localhost:11434/v1

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -18,16 +19,19 @@ import (
 )
 
 type Config struct {
-	HTTPAddr               string
-	ReadTimeout            time.Duration
-	WriteTimeout           time.Duration
-	OpenAIBaseURL          string
-	OpenAIAPIKey           string
-	OpenAIModel            string
-	PokemonTCGBaseURL      string
-	PokemonTCGAPIKey       string
-	FallbackRequestsPerMin int
-	EnableMCP              bool
+	HTTPAddr                 string
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
+	LogLevel                 slog.Level
+	HTTPAccessLogEnabled     bool
+	HTTPSlowRequestThreshold time.Duration
+	OpenAIBaseURL            string
+	OpenAIAPIKey             string
+	OpenAIModel              string
+	PokemonTCGBaseURL        string
+	PokemonTCGAPIKey         string
+	FallbackRequestsPerMin   int
+	EnableMCP                bool
 }
 
 func Bootstrap(ctx context.Context) (*http.Server, func(), error) {
@@ -62,7 +66,13 @@ func Bootstrap(ctx context.Context) (*http.Server, func(), error) {
 		TCG:     tcgClient,
 	})
 
-	router := httptransport.NewRouter(h, cfg.EnableMCP, mcptransport.NewServer(service))
+	router := httptransport.NewRouter(httptransport.RouterConfig{
+		Handlers:             h,
+		EnableMCP:            cfg.EnableMCP,
+		MCPServer:            mcptransport.NewServer(service),
+		AccessLogEnabled:     cfg.HTTPAccessLogEnabled,
+		SlowRequestThreshold: cfg.HTTPSlowRequestThreshold,
+	})
 	server := &http.Server{
 		Addr:         cfg.HTTPAddr,
 		Handler:      router,
@@ -82,16 +92,35 @@ func Bootstrap(ctx context.Context) (*http.Server, func(), error) {
 
 func loadConfig() Config {
 	return Config{
-		HTTPAddr:               getenv("HTTP_ADDR", ":8080"),
-		ReadTimeout:            durationEnv("HTTP_READ_TIMEOUT", 15*time.Second),
-		WriteTimeout:           durationEnv("HTTP_WRITE_TIMEOUT", 60*time.Second),
-		OpenAIBaseURL:          getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
-		OpenAIAPIKey:           os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:            getenv("OPENAI_MODEL", "qwen2.5:7b"),
-		PokemonTCGBaseURL:      getenv("POKEMON_TCG_BASE_URL", "https://api.pokemontcg.io/v2"),
-		PokemonTCGAPIKey:       os.Getenv("POKEMON_TCG_API_KEY"),
-		FallbackRequestsPerMin: intEnv("POKEMON_TCG_FALLBACK_RPM", 15),
-		EnableMCP:              boolEnv("ENABLE_MCP", false),
+		HTTPAddr:                 getenv("HTTP_ADDR", ":8080"),
+		ReadTimeout:              durationEnv("HTTP_READ_TIMEOUT", 15*time.Second),
+		WriteTimeout:             durationEnv("HTTP_WRITE_TIMEOUT", 60*time.Second),
+		LogLevel:                 logLevelEnv("LOG_LEVEL", slog.LevelInfo),
+		HTTPAccessLogEnabled:     boolEnv("HTTP_ACCESS_LOG_ENABLED", true),
+		HTTPSlowRequestThreshold: durationEnv("HTTP_SLOW_REQUEST_THRESHOLD", 500*time.Millisecond),
+		OpenAIBaseURL:            getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
+		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:              getenv("OPENAI_MODEL", "qwen2.5:7b"),
+		PokemonTCGBaseURL:        getenv("POKEMON_TCG_BASE_URL", "https://api.pokemontcg.io/v2"),
+		PokemonTCGAPIKey:         os.Getenv("POKEMON_TCG_API_KEY"),
+		FallbackRequestsPerMin:   intEnv("POKEMON_TCG_FALLBACK_RPM", 15),
+		EnableMCP:                boolEnv("ENABLE_MCP", false),
+	}
+}
+
+func logLevelEnv(key string, fallback slog.Level) slog.Level {
+	raw := os.Getenv(key)
+	switch raw {
+	case "debug", "DEBUG":
+		return slog.LevelDebug
+	case "info", "INFO", "":
+		return slog.LevelInfo
+	case "warn", "WARN", "warning", "WARNING":
+		return slog.LevelWarn
+	case "error", "ERROR":
+		return slog.LevelError
+	default:
+		return fallback
 	}
 }
 
