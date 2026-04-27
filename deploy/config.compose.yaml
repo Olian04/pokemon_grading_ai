@@ -13,14 +13,29 @@ ai:
   confidence_rule: '< 0.75'
   score_rule: '>= 7.5'
 
+imageproc:
+  card_normalize: true
+  strict_card_normalize: false
+  debug_normalize:
+    enabled: false
+    output_dir: ''
+
 openai:
   base_url: 'http://ollama:11434/v1'
   api_key: ''
+  # Surface assist is multimodal; pick a vision model (llava, qwen2-vl, etc.). qwen2.5:7b is text-only.
   model: 'qwen2.5:7b'
 
 market:
-  cardmarket_base_url: 'https://api.cardmarket.com/ws/v2.0'
-  cardmarket_api_key: ''
+  cardmarket_base_url: 'https://apiv2.cardmarket.com/ws/v2.0'
+  cardmarket_http_timeout: '20s'
+  cardmarket_singles_cache_ttl: '1h'
+  cardmarket_id_game: 3
+  cardmarket_app_token: ''
+  cardmarket_app_secret: ''
+  cardmarket_access_token: ''
+  cardmarket_access_token_secret: ''
+  tcg_set_to_expansion: {}
 
 pokemontcg:
   base_url: 'https://api.pokemontcg.io/v2'

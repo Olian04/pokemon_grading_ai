@@ -28,4 +28,11 @@ var (
 	// ErrNoEvidenceProvided is returned when evidence is missing or empty.
 	// Wrap with fmt.Errorf("%w: got empty evidence", ErrNoEvidenceProvided) when a concrete value helps operators.
 	ErrNoEvidenceProvided = errors.New("openai: no evidence provided")
+
+	// ErrEmptyImageBytes is returned when building a vision request with zero-length image bytes.
+	ErrEmptyImageBytes = errors.New("openai: empty image bytes")
+
+	// ErrUnsupportedImageType is returned when image bytes are not detected as image/* (e.g. wrong file type).
+	// Wrap with fmt.Errorf("%w: %s", ErrUnsupportedImageType, mime) for the detected Content-Type.
+	ErrUnsupportedImageType = errors.New("openai: unsupported image type")
 )

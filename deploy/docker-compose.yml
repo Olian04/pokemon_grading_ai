@@ -1,3 +1,4 @@
+# API image is stock Go; card dewarp uses pure Go (no OpenCV/CGO). Optional future gocv build would add libopencv.
 services:
   api:
     image: golang:1.26

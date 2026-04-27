@@ -22,18 +22,12 @@ func (s *Server) handleToolCall(w http.ResponseWriter, id any, params json.RawMe
 		writeError(w, id, -32602, "unsupported tool")
 		return
 	}
-	var args struct {
-		FrontImagePath string `json:"front_image_path"`
-		BackImagePath  string `json:"back_image_path"`
-	}
+	var args grading.GradeRequest
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		writeError(w, id, -32602, "invalid tool arguments")
 		return
 	}
-	resp, err := s.grading.GradeCard(context.Background(), grading.GradeRequest{
-		FrontImagePath: args.FrontImagePath,
-		BackImagePath:  args.BackImagePath,
-	})
+	resp, err := s.grading.GradeCard(context.Background(), args)
 	if err != nil {
 		writeError(w, id, -32000, fmt.Sprintf("grade failed: %v", err))
 		return

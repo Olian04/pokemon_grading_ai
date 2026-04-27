@@ -45,12 +45,13 @@ func (c *Client) AssessSurface(ctx context.Context, req grading.AIAssistRequest)
 	if c.baseURL == "" {
 		return grading.AIAssistResponse{}, ErrEmptyBaseURL
 	}
+	messages, err := buildSurfaceChatMessages(req)
+	if err != nil {
+		return grading.AIAssistResponse{}, err
+	}
 	body := map[string]any{
-		"model": c.model,
-		"messages": []map[string]string{
-			{"role": "system", "content": surfacePromptSystem},
-			{"role": "user", "content": buildSurfacePrompt(req)},
-		},
+		"model":       c.model,
+		"messages":    messages,
 		"temperature": 0.1,
 	}
 	raw, err := json.Marshal(body)
@@ -88,4 +89,38 @@ func (c *Client) AssessSurface(ctx context.Context, req grading.AIAssistRequest)
 		return grading.AIAssistResponse{}, ErrNoCompletionChoices
 	}
 	return parseAIAssistResponse(out.Choices[0].Message.Content)
+}
+
+// buildSurfaceChatMessages returns OpenAI-style chat messages: system string content,
+// then user multimodal content (instruction text, front image, optional back image).
+func buildSurfaceChatMessages(req grading.AIAssistRequest) ([]map[string]any, error) {
+	userParts := []any{
+		map[string]any{"type": "text", "text": buildSurfacePrompt(req)},
+	}
+	frontURL, err := imageDataURL(req.FrontImage)
+	if err != nil {
+		return nil, err
+	}
+	userParts = append(userParts, map[string]any{
+		"type": "image_url",
+		"image_url": map[string]any{
+			"url": frontURL,
+		},
+	})
+	if len(req.BackImage) > 0 {
+		backURL, err := imageDataURL(req.BackImage)
+		if err != nil {
+			return nil, err
+		}
+		userParts = append(userParts, map[string]any{
+			"type": "image_url",
+			"image_url": map[string]any{
+				"url": backURL,
+			},
+		})
+	}
+	return []map[string]any{
+		{"role": "system", "content": surfacePromptSystem},
+		{"role": "user", "content": userParts},
+	}, nil
 }

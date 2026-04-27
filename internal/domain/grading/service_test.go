@@ -14,7 +14,7 @@ type fakeAnalyzer struct {
 	err error
 }
 
-func (f fakeAnalyzer) Analyze(_ string) (imageproc.Result, error) {
+func (f fakeAnalyzer) Analyze(_ []byte) (imageproc.Result, error) {
 	return f.out, f.err
 }
 
@@ -40,12 +40,29 @@ func (fakeTCG) GetCardPricing(_ context.Context, _ string) (pokemontcg.PriceSumm
 	return pokemontcg.PriceSummary{ID: "base1-4", Holofoil: &v}, nil
 }
 
+type recordingTCG struct {
+	lastPricingID string
+}
+
+func (recordingTCG) SearchCards(_ context.Context, _ string) ([]pokemontcg.Card, error) {
+	return []pokemontcg.Card{
+		{ID: "base1-4", Name: "Charizard"},
+		{ID: "sv1-25", Name: "Pikachu"},
+	}, nil
+}
+
+func (r *recordingTCG) GetCardPricing(_ context.Context, id string) (pokemontcg.PriceSummary, error) {
+	r.lastPricingID = id
+	v := 10.0
+	return pokemontcg.PriceSummary{ID: id, Normal: &v}, nil
+}
+
 type fakeMarket struct{}
 
-func (fakeMarket) BuildMarketResult(_ context.Context, us pokemontcg.PriceSummary) market.Result {
+func (fakeMarket) BuildMarketResult(_ context.Context, in market.BuildInput) market.Result {
 	return market.Result{
 		US: market.RegionStats{
-			CurrentMarketValue: us.Holofoil,
+			CurrentMarketValue: in.US.Holofoil,
 		},
 		EU: market.RegionStats{
 			UnavailableReason: "cardmarket unavailable for test",
@@ -69,7 +86,7 @@ func TestGradeCardDeterministic(t *testing.T) {
 		},
 	})
 
-	resp, err := svc.GradeCard(context.Background(), GradeRequest{FrontImagePath: "front.png"})
+	resp, err := svc.GradeCard(context.Background(), GradeRequest{FrontImage: []byte("front")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,9 +129,9 @@ func TestGradeCardUsesAIFallbackForLowConfidence(t *testing.T) {
 	})
 
 	resp, err := svc.GradeCard(context.Background(), GradeRequest{
-		FrontImagePath: "front.png",
-		BackImagePath:  "back.png",
-		CardNameHint:   "Charizard",
+		FrontImage:   []byte("front"),
+		BackImage:    []byte("back"),
+		CardNameHint: "Charizard",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -127,6 +144,23 @@ func TestGradeCardUsesAIFallbackForLowConfidence(t *testing.T) {
 	}
 	if resp.Subscores["surface"] != 5.5 {
 		t.Fatalf("expected merged AI surface score 5.5, got %f", resp.Subscores["surface"])
+	}
+}
+
+func TestResolveMarketPicksCardMatchingSetHint(t *testing.T) {
+	tcg := &recordingTCG{}
+	svc := NewService(Dependencies{
+		TCG:      tcg,
+		Market:   fakeMarket{},
+		Analyzer: fakeAnalyzer{out: imageproc.Result{CenteringScore: 8, CornersScore: 8, EdgesScore: 8, SurfaceScore: 8, Confidence: 0.9}},
+	})
+	_, usd := svc.resolveMarket(context.Background(), GradeRequest{
+		CardNameHint:   "Pikachu",
+		SetCodeHint:    "sv1",
+		CardNumberHint: "25",
+	})
+	if tcg.lastPricingID != "sv1-25" {
+		t.Fatalf("expected pricing for sv1-25, got %q (usd=%v)", tcg.lastPricingID, usd)
 	}
 }
 
@@ -153,7 +187,7 @@ func TestGradeCardSkipsAIWhenLowValue(t *testing.T) {
 		},
 	})
 
-	resp, err := svc.GradeCard(context.Background(), GradeRequest{FrontImagePath: "front.png", CardNameHint: "Charizard"})
+	resp, err := svc.GradeCard(context.Background(), GradeRequest{FrontImage: []byte("front"), CardNameHint: "Charizard"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

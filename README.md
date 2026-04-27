@@ -38,11 +38,20 @@ Configuration is loaded from YAML.
     - user home directory: `pokemon-ai.yaml`, `.pokemon-ai.yaml`, `.pokemon-ai/config.yaml`
     - executable directory: `pokemon-ai.yaml`, `.pokemon-ai.yaml`, `.pokemon-ai/config.yaml`
   - First readable config file found is used, else start fails with error.
+- Optional **grading image** overrides (after YAML merge): `IMAGEPROC_CARD_NORMALIZE`, `STRICT_CARD_NORMALIZE`, `STRICT_CARD_DETECTION` (same meaning as strict normalize), `CARD_WARP_WIDTH`, `IMAGEPROC_MAX_WORKING_LONG_EDGE`, `IMAGEPROC_MIN_QUAD_AREA_RATIO`, `IMAGEPROC_MAX_QUAD_AREA_RATIO`. Booleans accept `1`/`0`, `true`/`false`, `yes`/`no`, etc.
 
 Copy `configs/config.example.yaml` to one of those locations and edit values.
 
+### Card photo dewarp (`imageproc` in YAML)
+
+Before deterministic scores, the API can **detect a card-shaped silhouette** and **perspective-warp** to a fixed aspect ratio (Pokémon 63:88). Implementation is **pure Go** (no OpenCV in this repo). If `strict_card_normalize` is false and detection fails, analysis falls back to the full photo with evidence `card_normalize: fallback_full_frame`. With `imageproc.debug_normalize` enabled, PNGs are written per step under `output_dir` — **sensitive**; disable on shared production hosts.
+
 All operational logs are emitted via `slog` in JSON format. HTTP logging and level are configured in YAML under `logging`.
 Prometheus metrics are available at `GET /metrics`.
+
+### Cardmarket (EU pricing)
+
+Under `market` in YAML, set the four OAuth 1.0a fields from your Cardmarket account (`cardmarket_app_token`, `cardmarket_app_secret`, `cardmarket_access_token`, `cardmarket_access_token_secret`). Populate `tcg_set_to_expansion` with Pokemon TCG API set codes (the part of the card `id` before the last `-`, for example `base1` for `base1-4`) mapped to Cardmarket `idExpansion` integers from MKM. Without credentials or mapping entries, the API still returns US prices but EU includes an explicit `unavailable_reason`.
 
 ## AI Gating Rules
 
@@ -70,16 +79,15 @@ Evaluation order:
 
 ### Grade a card
 
+`front_image` and optional `back_image` are standard JSON base64 strings (raw image bytes, e.g. PNG or JPEG). The server never reads paths on the client machine.
+
 ```bash
+# GNU base64: use -w0 to emit one line. On macOS: base64 < file | tr -d '\n'
+FRONT_B64=$(base64 -w0 assets/pokemon_card_front.png)
+BACK_B64=$(base64 -w0 assets/pokemon_card_back.png)
 curl -X POST http://localhost:8080/v1/grade \
   -H "Content-Type: application/json" \
-  -d '{
-    "front_image_path":"assets/pokemon_card_front.png",
-    "back_image_path":"assets/pokemon_card_back.png",
-    "card_name_hint":"Pikachu",
-    "set_code_hint":"base1",
-    "card_number_hint":"58"
-  }'
+  -d "{\"front_image\":\"$FRONT_B64\",\"back_image\":\"$BACK_B64\",\"card_name_hint\":\"Pikachu\",\"set_code_hint\":\"base1\",\"card_number_hint\":\"58\"}"
 ```
 
 ### Search cards

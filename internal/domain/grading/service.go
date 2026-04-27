@@ -16,7 +16,7 @@ type AIAdapter interface {
 }
 
 type ImageAnalyzer interface {
-	Analyze(path string) (imageproc.Result, error)
+	Analyze(image []byte) (imageproc.Result, error)
 }
 
 type Dependencies struct {
@@ -57,12 +57,12 @@ type TCGAdapter interface {
 }
 
 type MarketAdapter interface {
-	BuildMarketResult(ctx context.Context, us pokemontcg.PriceSummary) market.Result
+	BuildMarketResult(ctx context.Context, in market.BuildInput) market.Result
 }
 
 type GradeRequest struct {
-	FrontImagePath string `json:"front_image_path"`
-	BackImagePath  string `json:"back_image_path,omitempty"`
+	FrontImage     []byte `json:"front_image"`
+	BackImage      []byte `json:"back_image,omitempty"`
 	CardNameHint   string `json:"card_name_hint,omitempty"`
 	SetCodeHint    string `json:"set_code_hint,omitempty"`
 	CardNumberHint string `json:"card_number_hint,omitempty"`
@@ -82,8 +82,8 @@ type GradeResponse struct {
 }
 
 type AIAssistRequest struct {
-	FrontImagePath string
-	BackImagePath  string
+	FrontImage []byte
+	BackImage  []byte
 }
 
 type AIAssistResponse struct {
@@ -93,13 +93,13 @@ type AIAssistResponse struct {
 }
 
 func (s *Service) GradeCard(ctx context.Context, req GradeRequest) (GradeResponse, error) {
-	if req.FrontImagePath == "" {
-		return GradeResponse{}, errors.New("front_image_path is required")
+	if len(req.FrontImage) == 0 {
+		return GradeResponse{}, errors.New("front_image is required")
 	}
 	if s.analyzer == nil {
 		return GradeResponse{}, errors.New("image analyzer is not configured")
 	}
-	analysis, err := s.analyzer.Analyze(req.FrontImagePath)
+	analysis, err := s.analyzer.Analyze(req.FrontImage)
 	if err != nil {
 		return GradeResponse{}, err
 	}
@@ -134,8 +134,8 @@ func (s *Service) GradeCard(ctx context.Context, req GradeRequest) (GradeRespons
 		}
 		if confGate && scoreGate {
 			aiResp, err := s.ai.AssessSurface(ctx, AIAssistRequest{
-				FrontImagePath: req.FrontImagePath,
-				BackImagePath:  req.BackImagePath,
+				FrontImage: req.FrontImage,
+				BackImage:  req.BackImage,
 			})
 			if err == nil {
 				subscores["surface"] = aiResp.SurfaceScore
@@ -179,14 +179,20 @@ func (s *Service) resolveMarket(ctx context.Context, req GradeRequest) (market.R
 			US: market.RegionStats{UnavailableReason: "us pricing unavailable: search failed"},
 		}, 0
 	}
-	price, err := s.tcg.GetCardPricing(ctx, cards[0].ID)
+	chosen := market.PickBestCard(cards, req.SetCodeHint, req.CardNumberHint, req.CardNameHint)
+	price, err := s.tcg.GetCardPricing(ctx, chosen.ID)
 	if err != nil {
 		return market.Result{
 			EU: market.RegionStats{UnavailableReason: "cardmarket unavailable: missing pricing context"},
 			US: market.RegionStats{UnavailableReason: "us pricing unavailable: pricing lookup failed"},
 		}, 0
 	}
-	result := s.market.BuildMarketResult(ctx, price)
+	result := s.market.BuildMarketResult(ctx, market.BuildInput{
+		US:          price,
+		Card:        chosen,
+		SetCodeHint: req.SetCodeHint,
+		NumberHint:  req.CardNumberHint,
+	})
 	var usd float64
 	if result.US.CurrentMarketValue != nil {
 		usd = *result.US.CurrentMarketValue

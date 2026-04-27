@@ -40,27 +40,13 @@ func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-type gradeInput struct {
-	FrontImagePath string `json:"front_image_path"`
-	BackImagePath  string `json:"back_image_path"`
-	CardNameHint   string `json:"card_name_hint"`
-	SetCodeHint    string `json:"set_code_hint"`
-	CardNumberHint string `json:"card_number_hint"`
-}
-
 func (h *Handler) Grade(w http.ResponseWriter, r *http.Request) {
-	var in gradeInput
+	var in grading.GradeRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
-	resp, err := h.grading.GradeCard(r.Context(), grading.GradeRequest{
-		FrontImagePath: in.FrontImagePath,
-		BackImagePath:  in.BackImagePath,
-		CardNameHint:   in.CardNameHint,
-		SetCodeHint:    in.SetCodeHint,
-		CardNumberHint: in.CardNumberHint,
-	})
+	resp, err := h.grading.GradeCard(r.Context(), in)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

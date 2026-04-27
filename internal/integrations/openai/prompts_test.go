@@ -138,13 +138,13 @@ func TestParseAIAssistResponseOmittedConfidenceIsZero(t *testing.T) {
 }
 
 func TestBuildSurfacePromptFrontOnly(t *testing.T) {
-	got := buildSurfacePrompt(grading.AIAssistRequest{FrontImagePath: "/tmp/front.jpg"})
-	if strings.Contains(got, "Back image path:") {
-		t.Fatalf("did not expect back path line: %q", got)
+	got := buildSurfacePrompt(grading.AIAssistRequest{FrontImage: []byte{1}})
+	if strings.Contains(got, "second image") {
+		t.Fatalf("did not expect second image wording: %q", got)
 	}
 	for _, want := range []string{
-		"Analyze card surface defects",
-		"Front image path: /tmp/front.jpg",
+		"The first image is always the card front",
+		"Only the front was provided",
 		"If uncertain, use lower confidence.",
 	} {
 		if !strings.Contains(got, want) {
@@ -155,12 +155,12 @@ func TestBuildSurfacePromptFrontOnly(t *testing.T) {
 
 func TestBuildSurfacePromptWithBack(t *testing.T) {
 	got := buildSurfacePrompt(grading.AIAssistRequest{
-		FrontImagePath: "/a/front.png",
-		BackImagePath:  "/b/back.png",
+		FrontImage: []byte{1},
+		BackImage:  []byte{2},
 	})
 	for _, want := range []string{
-		"Front image path: /a/front.png",
-		"Back image path: /b/back.png",
+		"The first image is always the card front",
+		"The second image is the card back.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, got)

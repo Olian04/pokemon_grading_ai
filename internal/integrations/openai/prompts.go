@@ -15,13 +15,19 @@ evidence is a short array of strings.`
 
 func buildSurfacePrompt(req grading.AIAssistRequest) string {
 	parts := []string{
-		"Analyze card surface defects from provided file paths metadata.",
-		"Front image path: " + req.FrontImagePath,
+		"The images after this text are photos of a Pokemon TCG card.",
+		"The first image is always the card front (face).",
 	}
-	if req.BackImagePath != "" {
-		parts = append(parts, "Back image path: "+req.BackImagePath)
+	if len(req.BackImage) > 0 {
+		parts = append(parts, "The second image is the card back.")
+	} else {
+		parts = append(parts, "Only the front was provided; infer surface condition from the front only.")
 	}
-	parts = append(parts, "If uncertain, use lower confidence.")
+	parts = append(parts,
+		"Analyze visible surface defects (scratches, holo wear, dents, stains, print lines).",
+		"Follow the system message: respond in JSON only with surface_score, confidence, and evidence.",
+		"If uncertain, use lower confidence.",
+	)
 	return strings.Join(parts, "\n")
 }
 

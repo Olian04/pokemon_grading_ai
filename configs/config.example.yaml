@@ -13,9 +13,35 @@ ai:
   confidence_rule: '< 0.75'
   score_rule: '>= 7.5'
 
+# Card detection + perspective dewarp before deterministic heuristics.
+# When card_normalize is true, failure falls back to full-frame metrics unless strict_card_normalize is true.
+# debug_normalize writes PNGs per pipeline step (sensitive); requires output_dir when enabled.
+imageproc:
+  card_normalize: true
+  strict_card_normalize: false
+  max_working_long_edge: 960
+  warp_width: 800
+  min_quad_area_ratio: 0.12
+  max_quad_area_ratio: 0.92
+  debug_normalize:
+    enabled: false
+    output_dir: ''
+
+# EU pricing uses Cardmarket API 2.0 (OAuth 1.0a). Leave oauth fields empty to
+# keep EU analytics explicit with unavailable_reason.
+# Default host follows Cardmarket apiv2 guidance; override if your account docs differ.
 market:
-  cardmarket_base_url: 'https://api.cardmarket.com/ws/v2.0'
-  cardmarket_api_key: ''
+  cardmarket_base_url: 'https://apiv2.cardmarket.com/ws/v2.0'
+  cardmarket_http_timeout: '20s'
+  cardmarket_singles_cache_ttl: '1h'
+  # Pokemon TCG on Cardmarket (confirm in MKM docs for your account).
+  cardmarket_id_game: 3
+  cardmarket_app_token: ''
+  cardmarket_app_secret: ''
+  cardmarket_access_token: ''
+  cardmarket_access_token_secret: ''
+  # Map Pokemon TCG API set codes (id prefix before the last "-") to Cardmarket idExpansion.
+  tcg_set_to_expansion: {}
 
 openai:
   # Any OpenAI-compatible endpoint. Examples:
@@ -25,6 +51,8 @@ openai:
   # - LocalAI   http://localhost:8080/v1
   base_url: 'http://localhost:11434/v1'
   api_key: ''
+  # Surface assist sends images via OpenAI-style multimodal chat; use a vision-capable model
+  # (e.g. llava, qwen2-vl, gpt-4o). Plain text chat models (e.g. qwen2.5:7b) will not see pixels.
   model: 'qwen2.5:7b'
 
 pokemontcg:

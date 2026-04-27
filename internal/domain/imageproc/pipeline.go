@@ -1,12 +1,13 @@
 package imageproc
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"math"
-	"os"
+	"strconv"
 )
 
 type Result struct {
@@ -18,63 +19,114 @@ type Result struct {
 	Evidence       []string
 }
 
-type Analyzer struct{}
-
-func NewAnalyzer() Analyzer {
-	return Analyzer{}
+// Analyzer runs decode → optional card normalization → deterministic heuristics.
+type Analyzer struct {
+	cfg Config
 }
 
-func (Analyzer) Analyze(path string) (Result, error) {
-	if path == "" {
-		return Result{}, errors.New("image path is required")
+func NewAnalyzer(cfg Config) Analyzer {
+	return Analyzer{cfg: cfg}
+}
+
+// NewDefaultAnalyzer returns an analyzer with DefaultConfig (used in tests).
+func NewDefaultAnalyzer() Analyzer {
+	return NewAnalyzer(DefaultConfig())
+}
+
+func (a Analyzer) Analyze(imageBytes []byte) (Result, error) {
+	if len(imageBytes) == 0 {
+		return Result{}, errors.New("image bytes are required")
 	}
-	f, err := os.Open(path)
+	img, _, err := image.Decode(bytes.NewReader(imageBytes))
 	if err != nil {
 		return Result{}, err
 	}
-	defer f.Close()
 
-	img, _, err := image.Decode(f)
-	if err != nil {
-		return Result{}, err
-	}
-
-	b := img.Bounds()
+	orig := toRGBA(img)
+	b := orig.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w < 100 || h < 100 {
 		return Result{}, errors.New("insufficient_image_quality: image too small")
 	}
 
-	leftMean := edgeLumaMean(img, b.Min.X, b.Min.Y, w/16, h)
-	rightMean := edgeLumaMean(img, b.Max.X-w/16, b.Min.Y, w/16, h)
-	topMean := edgeLumaMean(img, b.Min.X, b.Min.Y, w, h/16)
-	bottomMean := edgeLumaMean(img, b.Min.X, b.Max.Y-h/16, w, h/16)
+	cfg := a.cfg
+	dbg, dbgErr := newDebugSink(cfg, "front")
+	if dbgErr != nil {
+		return Result{}, dbgErr
+	}
+
+	var work *image.RGBA = orig
+	var evidence []string
+	var meta QuadMeta
+
+	if cfg.CardNormalize {
+		norm, m, err := NormalizeCard(orig, cfg, dbg)
+		meta = m
+		if err == nil {
+			work = norm
+			evidence = append(evidence,
+				"card_normalize: perspective_warp_applied",
+				"post_dewarp_frame_metrics",
+			)
+		} else if cfg.StrictCardNormalize {
+			return Result{}, err
+		} else {
+			work = orig
+			evidence = append(evidence,
+				"card_normalize: fallback_full_frame",
+				err.Error(),
+			)
+			meta.FallbackUsed = true
+		}
+	} else {
+		evidence = append(evidence, "card_normalize: disabled")
+	}
+	if meta.AreaRatio > 0 && !meta.FallbackUsed {
+		evidence = append(evidence, "card_normalize: quad_area_ratio="+strconv.FormatFloat(meta.AreaRatio, 'f', 4, 64))
+	}
+	if dbg != nil && dbg.dir() != "" {
+		evidence = append(evidence, "card_normalize: debug_dir="+dbg.dir())
+	}
+
+	wb := work.Bounds()
+	w, h = wb.Dx(), wb.Dy()
+
+	leftMean := edgeLumaMean(work, wb.Min.X, wb.Min.Y, w/16, h)
+	rightMean := edgeLumaMean(work, wb.Max.X-w/16, wb.Min.Y, w/16, h)
+	topMean := edgeLumaMean(work, wb.Min.X, wb.Min.Y, w, h/16)
+	bottomMean := edgeLumaMean(work, wb.Min.X, wb.Max.Y-h/16, w, h/16)
 
 	centeringX := 10 - minFloat(10, absFloat(leftMean-rightMean)/10)
 	centeringY := 10 - minFloat(10, absFloat(topMean-bottomMean)/10)
 	centering := maxFloat(1, (centeringX+centeringY)/2)
 
-	cornerContrast := cornerDelta(img, b)
+	cornerContrast := cornerDelta(work, wb)
 	corners := clampScore(10 - cornerContrast/12)
 
-	edgeNoise := borderNoise(img, b)
+	edgeNoise := borderNoise(work, wb)
 	edges := clampScore(10 - edgeNoise/14)
 
-	surfaceVar := centerVariance(img, b)
+	surfaceVar := centerVariance(work, wb)
 	surface := clampScore(10 - surfaceVar/18)
 
 	confidence := clampUnit(0.55 + float64(minInt(w, h))/3000)
+	if cfg.CardNormalize && !meta.FallbackUsed {
+		confidence = clampUnit(confidence + 0.05)
+	}
+
+	evidence = append(evidence,
+		"deterministic border luminance symmetry",
+		"deterministic corner contrast heuristic",
+		"deterministic edge noise and surface variance",
+	)
+
 	return Result{
 		CenteringScore: round1(centering),
 		CornersScore:   round1(corners),
 		EdgesScore:     round1(edges),
 		SurfaceScore:   round1(surface),
 		Confidence:     round2(confidence),
-		Evidence: []string{
-			"deterministic border luminance symmetry",
-			"deterministic corner contrast heuristic",
-			"deterministic edge noise and surface variance",
-		},
+		Evidence:       evidence,
 	}, nil
 }
 
