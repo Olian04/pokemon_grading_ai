@@ -43,7 +43,7 @@ func NewClient(cfg Config) *Client {
 
 func (c *Client) AssessSurface(ctx context.Context, req grading.AIAssistRequest) (grading.AIAssistResponse, error) {
 	if c.baseURL == "" {
-		return grading.AIAssistResponse{}, fmt.Errorf("openai base url is empty")
+		return grading.AIAssistResponse{}, ErrEmptyBaseURL
 	}
 	body := map[string]any{
 		"model": c.model,
@@ -72,7 +72,7 @@ func (c *Client) AssessSurface(ctx context.Context, req grading.AIAssistRequest)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return grading.AIAssistResponse{}, fmt.Errorf("openai request failed with status %d", resp.StatusCode)
+		return grading.AIAssistResponse{}, fmt.Errorf("%w: status %d", ErrHTTPError, resp.StatusCode)
 	}
 	var out struct {
 		Choices []struct {
@@ -85,7 +85,7 @@ func (c *Client) AssessSurface(ctx context.Context, req grading.AIAssistRequest)
 		return grading.AIAssistResponse{}, err
 	}
 	if len(out.Choices) == 0 {
-		return grading.AIAssistResponse{}, fmt.Errorf("openai response had no choices")
+		return grading.AIAssistResponse{}, ErrNoCompletionChoices
 	}
-	return parseAIAssistResponse(out.Choices[0].Message.Content), nil
+	return parseAIAssistResponse(out.Choices[0].Message.Content)
 }

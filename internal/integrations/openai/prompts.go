@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"pokemon_ai/internal/domain/grading"
@@ -24,25 +25,27 @@ func buildSurfacePrompt(req grading.AIAssistRequest) string {
 	return strings.Join(parts, "\n")
 }
 
-func parseAIAssistResponse(raw string) grading.AIAssistResponse {
+func parseAIAssistResponse(raw string) (grading.AIAssistResponse, error) {
 	var parsed struct {
 		SurfaceScore float64  `json:"surface_score"`
 		Confidence   float64  `json:"confidence"`
 		Evidence     []string `json:"evidence"`
 	}
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return grading.AIAssistResponse{
-			SurfaceScore: 6,
-			Confidence:   0.3,
-			Evidence:     []string{"ai response parse fallback"},
-		}
+		return grading.AIAssistResponse{}, fmt.Errorf("%w: %w", ErrInvalidAIAssistJSON, err)
 	}
-	if parsed.SurfaceScore <= 0 {
-		parsed.SurfaceScore = 6
+	if parsed.SurfaceScore <= 0 || parsed.SurfaceScore > 10 {
+		return grading.AIAssistResponse{}, fmt.Errorf("%w: got %g", ErrInvalidSurfaceScore, parsed.SurfaceScore)
+	}
+	if parsed.Confidence < 0 || parsed.Confidence > 1 {
+		return grading.AIAssistResponse{}, fmt.Errorf("%w: got %g", ErrInvalidConfidenceScore, parsed.Confidence)
+	}
+	if len(parsed.Evidence) == 0 {
+		return grading.AIAssistResponse{}, ErrNoEvidenceProvided
 	}
 	return grading.AIAssistResponse{
 		SurfaceScore: parsed.SurfaceScore,
 		Confidence:   parsed.Confidence,
 		Evidence:     parsed.Evidence,
-	}
+	}, nil
 }
