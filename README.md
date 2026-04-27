@@ -16,7 +16,6 @@ Windows-first local API server for Pokemon card grading with deterministic image
 - PokemonTCG integration with:
   - `POKEMON_TCG_API_KEY` support
   - automatic client-side rate-limited fallback when key is absent.
-- Watermill in-process event bus for future async expansion.
 - Optional MCP endpoint at `POST /mcp` (`ENABLE_MCP=true`).
 
 ## Quick Start

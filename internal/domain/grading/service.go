@@ -15,8 +15,6 @@ type AIAdapter interface {
 	AssessSurface(ctx context.Context, req AIAssistRequest) (AIAssistResponse, error)
 }
 
-type EventPublisher interface{}
-
 type ImageAnalyzer interface {
 	Analyze(path string) (imageproc.Result, error)
 }
@@ -25,7 +23,6 @@ type Dependencies struct {
 	AI        AIAdapter
 	TCG       TCGAdapter
 	Market    MarketAdapter
-	Events    EventPublisher
 	Analyzer  ImageAnalyzer
 	PriceRule string
 	ConfRule  string

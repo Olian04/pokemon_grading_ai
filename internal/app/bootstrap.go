@@ -16,7 +16,6 @@ import (
 	"pokemon_ai/internal/integrations/market"
 	"pokemon_ai/internal/integrations/openai"
 	"pokemon_ai/internal/integrations/pokemontcg"
-	wm "pokemon_ai/internal/messaging/watermill"
 	"pokemon_ai/internal/observability/metrics"
 	httptransport "pokemon_ai/internal/transport/http"
 	"pokemon_ai/internal/transport/http/handlers"
@@ -57,11 +56,6 @@ func Bootstrap(ctx context.Context) (*http.Server, func(), error) {
 }
 
 func BootstrapWithConfig(ctx context.Context, cfg Config) (*http.Server, func(), error) {
-	bus, busCleanup, err := wm.NewInProcessBus()
-	if err != nil {
-		return nil, nil, err
-	}
-
 	tcgClient := pokemontcg.NewClient(pokemontcg.Config{
 		BaseURL:                cfg.PokemonTCGBaseURL,
 		APIKey:                 cfg.PokemonTCGAPIKey,
@@ -77,7 +71,6 @@ func BootstrapWithConfig(ctx context.Context, cfg Config) (*http.Server, func(),
 	service := grading.NewService(grading.Dependencies{
 		AI:        aiClient,
 		TCG:       tcgClient,
-		Events:    bus,
 		Analyzer:  imageproc.NewAnalyzer(),
 		Market:    market.NewService(market.Config{CardmarketBaseURL: cfg.MarketCardmarketBaseURL, CardmarketAPIKey: cfg.MarketCardmarketAPIKey}),
 		PriceRule: cfg.AIPriceRule,
@@ -110,7 +103,6 @@ func BootstrapWithConfig(ctx context.Context, cfg Config) (*http.Server, func(),
 		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
-		busCleanup()
 	}
 
 	return server, cleanup, nil
